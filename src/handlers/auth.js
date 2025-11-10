@@ -1,19 +1,15 @@
-import jwt from 'jsonwebtoken';
+import jwt from "jsonwebtoken";
 
-// By default, API Gateway authorizations are cached (TTL) for 300 seconds.
-// This policy will authorize all requests to the same API Gateway instance where the
-// request is coming from, thus being efficient and optimising costs.
 const generatePolicy = (principalId, methodArn) => {
-  const apiGatewayWildcard = methodArn.split('/', 2).join('/') + '/*';
-
+  const apiGatewayWildcard = methodArn.split("/", 2).join("/") + "/*";
   return {
     principalId,
     policyDocument: {
-      Version: '2012-10-17',
+      Version: "2012-10-17",
       Statement: [
         {
-          Action: 'execute-api:Invoke',
-          Effect: 'Allow',
+          Action: "execute-api:Invoke",
+          Effect: "Allow",
           Resource: apiGatewayWildcard,
         },
       ],
@@ -21,26 +17,41 @@ const generatePolicy = (principalId, methodArn) => {
   };
 };
 
-export async function handler(event, context) {
+export async function handler(event) {
   if (!event.authorizationToken) {
-    throw 'Unauthorized';
+    console.error("❌ No authorization token found");
+    throw new Error("Unauthorized");
   }
 
-  const token = event.authorizationToken.replace('Bearer ', '');
+  const token = event.authorizationToken.replace("Bearer ", "");
 
   try {
-    // Especifica el algoritmo RS256 para Auth0
     const claims = jwt.verify(token, process.env.AUTH0_PUBLIC_KEY, {
-      algorithms: ['RS256']
+      algorithms: ["RS256"],
+      issuer: "https://dev-i1w2y7423dkuo7fv.us.auth0.com/",
+      audience: [
+        "https://dev-i1w2y7423dkuo7fv.us.auth0.com/api/v2/",
+        "https://dev-i1w2y7423dkuo7fv.us.auth0.com/userinfo",
+      ],
+      ignoreExpiration: false,
     });
+
     const policy = generatePolicy(claims.sub, event.methodArn);
+
+    if (Array.isArray(claims.aud)) {
+      claims.aud = claims.aud[0];
+    }
 
     return {
       ...policy,
-      context: claims
+      context: claims,
     };
   } catch (error) {
-    console.log(error);
-    throw 'Unauthorized';
+    console.error("❌ Error al verificar JWT:", {
+      message: error.message,
+      name: error.name,
+      stack: error.stack,
+    });
+    throw new Error("Unauthorized");
   }
-};
+}
